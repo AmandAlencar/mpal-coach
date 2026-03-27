@@ -582,16 +582,29 @@
 </head>
 <body>
 
-<!-- Indicador de Sincronização -->
-<div id="sync-status" style="
-  position:fixed; bottom:16px; right:16px; z-index:9998;
-  padding:7px 14px; border-radius:99px; font-size:11px; font-weight:600;
-  background:#edf7f1; color:#1a6640; border:1px solid #b4e0c6;
-  opacity:0; transition:opacity 0.4s ease;
-  pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,0.08);
-"></div>
+<!-- Tela de Login -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#f0ede8;justify-content:center;align-items:center;font-family:'DM Sans',sans-serif;">
+  <div style="background:#fff;border-radius:20px;padding:44px 48px;width:100%;max-width:380px;box-shadow:0 12px 48px rgba(0,0,0,0.12);border:1px solid #e2ddd6;text-align:center;">
+    <div style="background:#c94f2f;color:#fff;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;padding:3px 10px;border-radius:4px;display:inline-block;margin-bottom:10px;">MPAL 2026</div>
+    <h1 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;margin-bottom:4px;color:#1a1714">Concurso Coach</h1>
+    <p style="font-size:12px;color:#9c948c;margin-bottom:28px">Faça login para acessar seu painel</p>
+    <div style="text-align:left;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:#5c5650;margin-bottom:5px">Email</div>
+      <input id="login-email" type="text" placeholder="seu@email.com" style="width:100%;padding:10px 13px;border:1px solid #e2ddd6;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:#faf9f6;color:#1a1714" onkeydown="loginKeydown(event)">
+    </div>
+    <div style="text-align:left;margin-bottom:20px">
+      <div style="font-size:11px;font-weight:600;color:#5c5650;margin-bottom:5px">Senha</div>
+      <input id="login-senha" type="password" placeholder="••••••••" style="width:100%;padding:10px 13px;border:1px solid #e2ddd6;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:#faf9f6;color:#1a1714" onkeydown="loginKeydown(event)">
+    </div>
+    <div id="login-erro" style="color:#c94f2f;font-size:12px;margin-bottom:12px;min-height:16px"></div>
+    <button id="login-btn" onclick="doLogin()" style="width:100%;padding:11px;background:#c94f2f;color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;" onmouseover="this.style.background='#b54027'" onmouseout="this.style.background='#c94f2f'">Entrar</button>
+  </div>
+</div>
 
-<div class="shell">
+<!-- Indicador de Sincronização -->
+<div id="sync-status" style="position:fixed;bottom:16px;right:16px;z-index:9998;padding:7px 14px;border-radius:99px;font-size:11px;font-weight:600;background:#edf7f1;color:#1a6640;border:1px solid #b4e0c6;opacity:0;transition:opacity 0.4s ease;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.08);"></div>
+
+<div class="shell" style="display:none">
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
@@ -1146,12 +1159,12 @@
 
 <script>
 // ============================================================
-// FIREBASE — carrega SDKs dinamicamente e só inicia o app depois
+// FIREBASE — Auth + Realtime Database
 // ============================================================
-var db; // var = acessível em todo o script
+var db;   // Realtime Database
+var auth; // Firebase Auth
 
 function _bootstrapApp() {
-  // Chamada apenas após firebase-database-compat.js carregar
   firebase.initializeApp({
     apiKey: "AIzaSyCGTcgmZiRv3HLGwQttSQGd63znsVJ_RK8",
     authDomain: "mpal-coach.firebaseapp.com",
@@ -1161,9 +1174,42 @@ function _bootstrapApp() {
     messagingSenderId: "693674924860",
     appId: "1:693674924860:web:ece9d898de259234661c39"
   });
-  db = firebase.database();
-  init();
+  db   = firebase.database();
+  auth = firebase.auth();
+
+  // Observa estado de autenticação
+  auth.onAuthStateChanged(function(user) {
+    if (user) {
+      // Logado — esconde tela de login e inicia app
+      document.getElementById('login-overlay').style.display = 'none';
+      document.querySelector('.shell').style.display = 'flex';
+      init();
+    } else {
+      // Não logado — mostra tela de login
+      document.getElementById('login-overlay').style.display = 'flex';
+      document.querySelector('.shell').style.display = 'none';
+    }
+  });
 }
+
+function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var senha = document.getElementById('login-senha').value;
+  var btn   = document.getElementById('login-btn');
+  var err   = document.getElementById('login-erro');
+  err.textContent = '';
+  btn.textContent = 'Entrando…';
+  btn.disabled = true;
+  auth.signInWithEmailAndPassword(email, senha)
+    .catch(function(e) {
+      err.textContent = 'Email ou senha incorretos.';
+      btn.textContent = 'Entrar';
+      btn.disabled = false;
+    });
+}
+
+// Permite pressionar Enter no campo de senha
+function loginKeydown(e) { if (e.key === 'Enter') doLogin(); }
 
 (function loadFirebaseSDKs() {
   var s1 = document.createElement('script');
@@ -1171,11 +1217,14 @@ function _bootstrapApp() {
   s1.onload = function() {
     var s2 = document.createElement('script');
     s2.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js';
-    s2.onload = _bootstrapApp;
-    s2.onerror = function() { console.error('Falha ao carregar firebase-database'); _bootstrapApp(); };
+    s2.onload = function() {
+      var s3 = document.createElement('script');
+      s3.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js';
+      s3.onload = _bootstrapApp;
+      document.head.appendChild(s3);
+    };
     document.head.appendChild(s2);
   };
-  s1.onerror = function() { console.error('Falha ao carregar firebase-app'); };
   document.head.appendChild(s1);
 })();
 
