@@ -1741,9 +1741,11 @@ function getPctCombinado(discKey, topicoNome, pctBase, qBase) {
   if (matches.length === 0) return pctBase;
   const totalQ = matches.reduce((a, s) => a + s.qtd, 0);
   const totalAc = matches.reduce((a, s) => a + s.acertos, 0);
-  // Média ponderada: base + novos
-  const acBase = Math.round(qBase * pctBase / 100);
-  const novoTotal = qBase + totalQ;
+  // FIX: limita peso da base a 80q para que sessões tenham impacto real no ranking.
+  // Sem esse cap, um tópico com 300q base praticamente não muda de posição com 20 novas questões.
+  const cappedBase = Math.min(qBase, 80);
+  const acBase = Math.round(cappedBase * pctBase / 100);
+  const novoTotal = cappedBase + totalQ;
   return Math.round((acBase + totalAc) / novoTotal * 100);
 }
 
@@ -3039,6 +3041,7 @@ function registrarSessao() {
   renderAtualizar();
   renderTabelaTopicos();
   atualizarTopicosDisp();
+  renderDashboard(); // FIX: atualiza Top 10 e ranking imediatamente após registrar sessão
 
   // Mostrar celebração se percentual subiu
   const novoNovoPct = getPctCombinado('_edital_', topicoNome, (() => {
@@ -3124,15 +3127,33 @@ function renderAtualizar() {
     list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Nenhuma sessão registrada ainda.</div>';
     return;
   }
-  list.innerHTML = state.sessoes.slice().reverse().slice(0, 20).map(s => `
+  list.innerHTML = state.sessoes.slice().reverse().slice(0, 20).map((s, idx) => {
+    const realIdx = state.sessoes.length - 1 - idx;
+    return `
     <div class="topic-row">
       <div class="topic-info">
         <div class="topic-name" style="font-size:12px">${s.topico}</div>
-        <div class="topic-meta">${s.data} · ${s.qtd} questões · ${s.acertos} acertos</div>
+        <div class="topic-meta">${s.data} · ${s.qtd} questões · ${s.acertos} acertos · <span style="color:var(--text2)">${s.disc}</span></div>
       </div>
-      <div class="topic-pct" style="color:${getStatusColor(s.pct)}">${s.pct}%</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="topic-pct" style="color:${getStatusColor(s.pct)}">${s.pct}%</div>
+        <button onclick="deletarSessao(${realIdx})" title="Remover esta sessão"
+          style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;padding:4px;line-height:1;border-radius:4px;"
+          onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">✕</button>
+      </div>
     </div>
-  `).join('');
+  `}).join('');
+}
+
+function deletarSessao(idx) {
+  if (!state.sessoes || idx < 0 || idx >= state.sessoes.length) return;
+  const s = state.sessoes[idx];
+  if (!confirm(`Remover sessão de "${s.topico}" (${s.data} · ${s.qtd} questões · ${s.pct}%)?`)) return;
+  state.sessoes.splice(idx, 1);
+  saveState();
+  renderAtualizar();
+  renderTabelaTopicos();
+  renderDashboard();
 }
 
 function renderTabelaTopicos() {
